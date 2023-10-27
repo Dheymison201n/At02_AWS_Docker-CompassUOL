@@ -11,4 +11,4 @@ services:
     ports:
       - 80:80
     volumes:
-      - /nfs/wordpress:/var/www/html
+      - /mnt/efs/wordpress:/var/www/html
