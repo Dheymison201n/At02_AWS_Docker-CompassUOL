@@ -1,4 +1,4 @@
-version: '3'
+version: '3.4'
 services:
   wordpress:
     image: wordpress:latest
