@@ -1,0 +1,14 @@
+version: '3'
+services:
+  wordpress:
+    image: wordpress:latest
+    environment:
+      TZ: America/Fortaleza
+      WORDPRESS_DB_HOST: wordpress.cktoypu3k0fs.us-east-1.rds.amazonaws.com:3306
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: wordpress
+      WORDPRESS_DB_NAME: wordpress
+    ports:
+      - 80:80
+    volumes:
+      - /nfs/wordpress:/var/www/html
