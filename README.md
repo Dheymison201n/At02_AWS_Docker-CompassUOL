@@ -14,8 +14,11 @@ Repositorio para a atividade de Docker, do programa de bolsas da Compass UOL.
 - [Instalação do Docker Compose](#instalação-do-docker-compose)
 - [Montagem do EFS](#montagem-do-efs)
 - [Executando contêineres via Docker Compose](#executando-contêineres-via-docker-compose)
+- [RDS](#rds)
 - [Configuração do balanceador de cargas](#configuração-do-balanceador-de-cargas)
     - [Aplication Load Balancer](#aplication-load-balancer)
+- [Autoscaling](#autoscaling)
+    - [Launcher Template](#launcher-template)
 
 # Sobre a atividade
 ## Requisitos
@@ -43,26 +46,39 @@ Repositorio para a atividade de Docker, do programa de bolsas da Compass UOL.
 
 ## Configuração do grupo de segurança
 
-Configurar 2 grupos de segurança, um para a instância e outro para o load balancer.
+Configurar 4 grupos de segurança, um para a instância de aplicação, load balancer, EFS e RDS.
 
 - Grupo de segurança do balanceador de carga
-  Porta | Protocolo | Origem
-  --- | --- | ---
-  80  | TCP | 0.0.0.0/0
+  
+|Tipo|Protocolo|Porta|Origem|
+|----------|-----|-----|----|
+|HTTP|TCP|80|0.0.0.0/0|
 
 - Grupo de segurança da aplicação
-  Porta | Protocolo | Origem 
-  --- | --- | ---
-  22 | TCP | Grupo de segurança do Bastion Host
-  2049 | TCP | 172.0.0.0/16
-  2049 | UDP | 172.0.0.0/16
-  80 | TCP | Grupo de segurança do balanceador de carga
+
+|Tipo|Protocolo|Porta|Origem|
+|----------|-----|-----|----|
+|SSH|TCP|22|0.0.0.0/0|
+|HTTP|TCP|80|0.0.0.0/0|
+
+- Grupo de segurança do EFS:
+
+|Tipo|Protocolo|Porta|Origem|
+|----------|-----|-----|----|
+|NFS|TCP|2049|0.0.0.0/0|
+
+- Grupo de segurança do RDS:
+  
+|Tipo|Protocolo|Porta|Origem|
+|----------|-----|-----|----|
+|MYSQL/Aurora|TCP|3306|0.0.0.0/0|
 
 ## Configuração da VPC
 
 Inicie navegando para o console da VPC no link https://us-east-1.console.aws.amazon.com/vpc/home
+
 ### Configuração das sub-redes
-Utilizar a VPC padrão já criada, porém pra essa vpc devemos considerar o uso de quatro sub-redes, sendo duas privada, que contém a instância da aplicação em duas zona de disponibilidade(AZ) diferentes, e as outras duas públicas, que contém a instância do bastion. Então, navegue para seção de sub-redes.
+Utilizar a VPC padrão já criada, porém pra essa vpc devemos considerar o uso de quatro sub-redes, sendo duas privada, que contém a instância da aplicação em duas zona de disponibilidade(AZ) diferentes, e as outras duas públicas, que podem conter uma instância bastion. Então, navegue para seção de sub-redes.
 
 - Criando sub-rede privada
     - `Nome: wordpress01prv-pb-ufc`
@@ -146,20 +162,6 @@ Antes da execução das instâncias, devemos iniciar com a criação dos par de 
     - `Tipo: RSA`
     - `Formato: .pem`
 
-Seguindo com a execução das instâncias, iremos continuar com a execução do Bastion Host.
-
-## Executando Bastion Host
-Inicie navegando para o console da EC2 no link https://us-east-1.console.aws.amazon.com/ec2/home e selecione `executar instância`.
-
-### Configuração da instância
-- `AMI: Linux 2`
-- `VPC: default`
-- `Sub-rede:  `
-- `Tipo da instância: t2.micro`
-- `par de chaves: keySSH-pb-UFC.pem`
-- `EBS: 16GB GP3`
-- `Auto-associamento de IP público: habilitado`
-
 ## Executando instância da aplicação
 Inicie navegando para o console da EC2 no link https://us-east-1.console.aws.amazon.com/ec2/home e selecione `executar instância`.
 
@@ -240,6 +242,34 @@ Após isso podemos subir os contêineres utilizando o seguinte comando:
 docker-compose -f /home/ec2-user/docker-compose.yml up -d
 ```
 
+# RDS
+
+A configuração do Amazon RDS segue as etapas abaixo:
+
+1. Acesse a seção de RDS na AWS.
+2. No menu "Banco de dados", clique em "Criar banco de dados".
+3. Selecione o "Método de criação padrão".
+4. Escolha o mecanismo do MySQL.
+5. Selecione o modelo de nível gratuito.
+6. Insira o nome de identificador da instância.
+7. Configure o nome do usuário.
+8. Configure a senha do usuário.
+9. Escolha a configuração da instância, no caso, "db.t3.micro".
+10. Escolha o tipo de armazenamento gp2.
+11. Na opção de conectividade, marque "não se conectar a um recurso de computação do EC2".
+12. Selecione o Tipo de rede como IPv4.
+13. Escolha a VPC onde estarão as instâncias e os demais componentes da infraestrutura.
+14. Selecione o grupo de sub-redes.
+15. Crie um grupo de segurança para o RDS.
+16. Deixe a zona de disponibilidade como "Sem preferência".
+17. Mantenha a autoridade de certificação como padrão.
+18. Escolha a opção de autenticação com senha.
+19. Vá para "Configurações adicionais".
+20. Insira o nome do RDS.
+21. As opções de backup, monitoramento, criptografia e manutenção são configuráveis e opcionais.
+
+Essas etapas permitem configurar um banco de dados RDS com o mecanismo MySQL e o tamanho de instância desejados, garantindo alta disponibilidade e escalabilidade conforme necessário.
+
 # Configuração do balanceador de cargas
 
 Inicie navegando para o console da EC2 no link https://us-east-1.console.aws.amazon.com/ec2/home e acesse a seção do balanceador de carga.
@@ -256,5 +286,33 @@ Seguimos com a criação do ALB.
         - `us-east-1a`
         - `us-east-1b`
     - `Grupo de segurança: as-lb-pb-ufc`
+ 
+# Autoscaling
+
+Para configurar o autoscaling, foi inicialmente criado um *launcher template* que usa o script `user_data.sh`.
+
+A configuração do autoscaling segue estas etapas:
+1. Acesse a seção "Grupos do Auto Scaling".
+2. Clique em "Criar Grupo do Auto Scaling".
+3. Insira o nome do grupo.
+4. Selecione o *launcher template* criado.
+5. Escolha a VPC adequada.
+6. Selecione as subnets privadas onde as instâncias serão criadas.
+7. Em balanceador de carga, você pode selecionar um já existente ou criar um posteriormente.
+8. Opcionalmente, habilite a coleta de métricas de grupo no CloudWatch.
+9. Especifique a capacidade desejada, mínima e máxima (por exemplo, todas definidas como 2).
+
+## Launcher Template
+
+Para o modelo de lançamento, foi escolhida a seguinte configuração dentro do *free tier*:
+- Amazon Linux 2.
+- Tipo de instância t2.micro.
+- Utilização de um "par de chaves" criado para essa atividade.
+- Grupo de segurança configurado conforme especificado anteriormente.
+- Armazenamento do tipo GP3 com 16GB.
+- Inclusão de um script `user_data`.
+
+Esta configuração permite a criação de um ambiente escalável e flexível que pode se ajustar automaticamente à demanda, mantendo alta disponibilidade e eficiência. A adição de um balanceador de carga e a coleta de métricas no CloudWatch são práticas recomendadas para otimizar o processo de autoscaling e garantir o bom desempenho e a confiabilidade das aplicações na nuvem.
+
 
 [Voltar para o início](#atividade-aws-docker)
